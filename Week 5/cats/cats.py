@@ -164,7 +164,24 @@ def memo_diff(diff_function):
 
     def memoized(typed, source, limit):
         # BEGIN PROBLEM EC
-        "*** YOUR CODE HERE ***"
+        # 使用元组确保 typed 和 source 是不可变的
+        key = (typed, source)
+
+        # 如果不在缓存中
+        if key not in cache:
+            result = diff_function(typed, source, limit)
+            cache[key] = (result, limit)
+            return result
+        
+        # 如果在缓存中
+        else:
+            cache_result, cache_limit = cache[key]
+            if limit > cache_limit:
+                result = diff_function(typed, source, limit)
+                cache[key] = (result, limit)
+                return result
+            else:
+                return cache_result
         # END PROBLEM EC
 
     return memoized
@@ -174,7 +191,7 @@ def memo_diff(diff_function):
 # Phase 2 #
 ###########
 
-
+@memo
 def autocorrect(typed_word: str, word_list: list[str], diff_function, limit: int) -> str:
     """Returns the element of WORD_LIST that has the smallest difference
     from TYPED_WORD based on DIFF_FUNCTION. If multiple words are tied for the smallest difference,
@@ -265,7 +282,7 @@ def furry_fixes(typed: str, source: str, limit: int) -> int:
     return total
     # END PROBLEM 6
 
-
+@memo_diff
 def minimum_mewtations(typed: str, source: str, limit: int) -> int:
     """A diff function for autocorrect that computes the edit distance from TYPED to SOURCE.
     This function takes in a string TYPED, a string SOURCE, and a number LIMIT.
@@ -283,42 +300,32 @@ def minimum_mewtations(typed: str, source: str, limit: int) -> int:
     >>> minimum_mewtations("ckiteus", "kittens", big_limit) # ckiteus -> kiteus -> kitteus -> kittens
     3
     """
-    if limit < 0: # Base cases should go here, you may add more base cases as needed.
-        # BEGIN
+    if limit < 0:
         return limit + 1
-        # END
-    
+
     if typed == source:
-        # BEGIN
         return 0
-        # END
 
-    if len(typed) == 0:
-        # BEGIN
-        return len(source)  # 意味着全是添加
-        # END
+    if not typed:
+        return len(source)
 
-    if len(source) == 0:
-        # BEGIN
-        return len(typed)  # 意味着全是删除
-        # END
-    
-    # Recursive cases should go below here
-    if typed[0] == source[0]: # Feel free to remove or add additional cases
-        # BEGIN
+    if not source:
+        return len(typed)
+
+    if abs(len(typed) - len(source)) > limit:
+        return limit + 1
+
+    if typed[0] == source[0]:
         return minimum_mewtations(typed[1:], source[1:], limit)
-        # END
-    else:
-        # Add: 在 typed 加一个字母即相当于跳过 source[0]
-        add = 1 + minimum_mewtations(typed, source[1:], limit - 1)
-        # Remove: 删掉 typed[0]
-        remove = 1 + minimum_mewtations(typed[1:], source, limit - 1)
-        # Substitute: typed[0] 替换成 source[0]
-        substitute = 1 + minimum_mewtations(typed[1:], source[1:], limit - 1)
-        # BEGIN
-        return min(add, remove, substitute)
-        # END
 
+    # Add: 在 typed 加一个字母即相当于跳过 source[0]
+    add = 1 + minimum_mewtations(typed, source[1:], limit - 1)
+    # Remove: 删掉 typed[0]
+    remove = 1 + minimum_mewtations(typed[1:], source, limit - 1)
+    # Substitute: typed[0] 替换成 source[0]
+    substitute = 1 + minimum_mewtations(typed[1:], source[1:], limit - 1)
+
+    return min(add, remove, substitute)
 
 # Ignore the line below
 minimum_mewtations = count(minimum_mewtations)
@@ -327,8 +334,7 @@ minimum_mewtations = count(minimum_mewtations)
 def final_diff(typed: str, source: str, limit: int) -> int:
     """A diff function that takes in a string TYPED, a string SOURCE, and a number LIMIT.
     If you implement this function, it will be used."""
-    # ---------- Helper data ----------
-    # Keyboard adjacency groups (cost 0.5 instead of 1)
+    # 设定字典定义键盘上相邻字母的关系
     neighbors = {
         'q':'w', 'w':'qe', 'e':'wr', 'r':'et', 't':'ry',
         'y':'tu', 'u':'yi', 'i':'uo', 'o':'ip', 'p':'o',
@@ -340,45 +346,43 @@ def final_diff(typed: str, source: str, limit: int) -> int:
         'n':'bm', 'm':'n'
     }
 
-    # ---------- Base cases ----------
     if limit < 0:
         return limit + 1
 
     if typed == source:
         return 0
 
+    # 意味着全是添加
     if len(typed) == 0:
         return len(source)
 
+    # 意味着全是删除
     if len(source) == 0:
         return len(typed)
 
-    # ---------- Swap detection ----------
-    # Detect adjacent swap: e.g., "acress" → "caress"
+    # 检测字符串的相邻字符交换
     if len(typed) > 1 and len(source) > 1:
         if typed[0] == source[1] and typed[1] == source[0]:
             return 1 + final_diff(typed[2:], source[2:], limit - 1)
 
-    # ---------- If first letters match ----------
+    # 如果第一个字符相同
     if typed[0] == source[0]:
         return final_diff(typed[1:], source[1:], limit)
 
-    # ---------- Costs ----------
-    # Substitute cost：如果是键盘相邻，成本更低（0.5）
+    # 计算替换操作的成本
     if typed[0] in neighbors and source[0] in neighbors[typed[0]]:
+        # 如果 typed[0] 和 source[0] 是相邻的键盘字符
         sub_cost = 0.5
     else:
         sub_cost = 1
 
-    # Repeated letter removal optimization
-    # If typed contains double letter (like "tt"), removing one is cheaper
+    # 如果 typed 包含连续的重复字母
     if len(typed) > 1 and typed[0] == typed[1]:
         repeat_remove_cost = 0.5
     else:
         repeat_remove_cost = 1
 
-    # ---------- Recursive choices ----------
-    add = 1 + final_diff(typed, source[1:], limit - 1)      # Add letter
+    add = 1 + final_diff(typed, source[1:], limit - 1)
     remove = repeat_remove_cost + final_diff(typed[1:], source, limit - repeat_remove_cost)
     substitute = sub_cost + final_diff(typed[1:], source[1:], limit - sub_cost)
 
@@ -417,7 +421,19 @@ def report_progress(typed: list[str], source: list[str], user_id: int, upload) -
     0.2
     """
     # BEGIN PROBLEM 8
-    "*** YOUR CODE HERE ***"
+    correct_words = 0
+    for t, s in zip(typed, source):
+        if t == s:
+            correct_words += 1
+        # 找到第一个不符合的单词就停止
+        else:
+            break
+    
+    progress = correct_words / len(source)
+    
+    upload({'id': user_id, 'progress': progress})
+    
+    return progress
     # END PROBLEM 8
 
 
@@ -441,7 +457,15 @@ def time_per_word(words: list[str], timestamps_per_player: list[list[int]]) -> d
     """
     tpp = timestamps_per_player  # A shorter name (for convenience)
     # BEGIN PROBLEM 9
-    times = []  # You may remove this line
+    times = []
+
+    for timestamps in tpp:
+        player_times = []
+        for i in range(1, len(timestamps)):
+            player_times.append(timestamps[i] - timestamps[i - 1])
+
+        times.append(player_times)
+
     # END PROBLEM 9
     return {'words': words, 'times': times}
 
@@ -469,7 +493,29 @@ def fastest_words(words_and_times: dict) -> list[list[str]]:
     player_indices = range(len(times))  # contains an *index* for each player
     word_indices = range(len(words))    # contains an *index* for each word
     # BEGIN PROBLEM 10
-    "*** YOUR CODE HERE ***"
+    fastest = [[] for _ in range(len(times))]
+
+    for word_index in word_indices:
+        # 寻找打这个单词最快的玩家
+        # 一开始设定 best_time 为无穷大
+        best_time = float('inf')
+        fastest_player = None
+        
+        for player_index in player_indices:
+            time = times[player_index][word_index]
+
+            if time < best_time:
+                best_time = time
+                fastest_player = player_index
+            
+            # 如果平局，那么选择索引最小的玩家
+            elif time == best_time:
+                if player_index < fastest_player:
+                    fastest_player = player_index
+        
+        fastest[fastest_player].append(words[word_index])
+
+    return fastest
     # END PROBLEM 10
 
 
